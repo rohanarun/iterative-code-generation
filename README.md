@@ -2,7 +2,7 @@
 
 A browser-based tool that demonstrates AI-powered code generation with visual line-by-line execution testing.
 
-![Iterative Code Generation Tester Screenshot](https://placeholder-for-screenshot.png)
+[Live Demo:]([https://placeholder-for-screenshot.png](https://www.agentsbase.ai/iterative_code_generation.html))
 
 ## Overview
 
