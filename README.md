@@ -77,13 +77,6 @@ When real errors are detected:
 3. The AI returns a fixed version of the code with explanations
 4. The fixed code replaces the original solution
 
-## Use Cases
-
-- **Educational Tool**: Learn how code executes line-by-line
-- **Debugging Practice**: Understand how to identify and fix common code errors
-- **AI Capabilities Demo**: Showcase how AI can generate and fix code interactively
-- **Development Sandbox**: Quickly prototype solutions to coding problems
-
 ## Limitations
 
 - Currently only supports JavaScript code execution
