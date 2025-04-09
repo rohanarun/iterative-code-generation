@@ -42,7 +42,7 @@ Clone this repository:
 
 code
 
-git clone https://github.com/yourusername/iterative-code-generation-tester.git
+git clone https://github.com/rohanarun/iterative-code-generation-tester.git
 
 Open index.html in your web browser (no server required)
 
