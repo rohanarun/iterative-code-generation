@@ -2,8 +2,7 @@
 
 A browser-based tool that demonstrates AI-powered code generation with visual line-by-line execution testing.
 
-[Live Demo:]([https://placeholder-for-screenshot.png](https://www.agentsbase.ai/iterative_code_generation.html))
-
+Live demo: https://www.agentsbase.ai/iterative_code_generation.html
 ## Overview
 
 This tool demonstrates an interactive approach to code generation using Large Language Models (LLMs) through OpenRouter's API. Instead of generating code in one pass and hoping it works, this tool:
