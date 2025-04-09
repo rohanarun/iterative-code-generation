@@ -1,0 +1,661 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iterative Code Generation Tester</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .panel {
+            flex: 1;
+            background-color: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .panel h2 {
+            margin-top: 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        #apiKey {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 15px;
+        }
+        #taskInput {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 15px;
+            height: 80px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        pre {
+            background-color: #f8f8f8;
+            padding: 10px;
+            border-radius: 4px;
+            overflow: auto;
+            max-height: 400px;
+            margin: 0;
+            border: 1px solid #ddd;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        #generatedCode, #executionOutput {
+            height: 400px;
+            overflow: auto;
+        }
+        .code-line {
+            padding: 2px 5px;
+            margin: 1px 0;
+        }
+        .error {
+            color: red;
+            margin-bottom: 10px;
+        }
+        .success {
+            color: green;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        .info {
+            color: #0066cc;
+            margin: 10px 0;
+        }
+        .loader {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .current-line {
+            background-color: #fffde7;
+            display: block;
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .speed-control {
+            display: flex;
+            align-items: center;
+            margin-left: 15px;
+        }
+        .speed-control label {
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Iterative Code Generation Tester</h1>
+    
+    <div>
+        <label for="apiKey">OpenRouter API Key:</label>
+        <input type="password" id="apiKey" placeholder="Enter your OpenRouter API key">
+    </div>
+    
+    <div>
+        <label for="taskInput">What would you like to generate code for?</label>
+        <textarea id="taskInput" placeholder="E.g., Create a function that calculates the factorial of a number"></textarea>
+    </div>
+    
+    <div class="controls">
+        <button id="generateButton">Generate Full Code</button>
+        <button id="testButton" disabled>Test Line by Line</button>
+        <button id="resetButton">Reset</button>
+        
+        <div class="speed-control">
+            <label for="speedSlider">Execution Speed:</label>
+            <input type="range" id="speedSlider" min="100" max="2000" step="100" value="500">
+            <span id="speedValue">500ms</span>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="panel">
+            <h2>Generated Code</h2>
+            <div id="lineCounter" class="info">Lines: 0</div>
+            <pre id="generatedCode"></pre>
+        </div>
+        <div class="panel">
+            <h2>Execution Output</h2>
+            <pre id="executionOutput"></pre>
+        </div>
+    </div>
+    
+    <div id="status" class="status"></div>
+    
+    <script>
+        let apiKey = '';
+        let fullCode = '';
+        let codeLines = [];
+        let currentLineIndex = 0;
+        let isGenerating = false;
+        let isTesting = false;
+        let testInterval = 500; // ms between line executions
+        let testIntervalId = null;
+        let realErrors = [];
+        
+        // DOM elements
+        const generateButton = document.getElementById('generateButton');
+        const testButton = document.getElementById('testButton');
+        const resetButton = document.getElementById('resetButton');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+        const generatedCodeElement = document.getElementById('generatedCode');
+        const executionOutputElement = document.getElementById('executionOutput');
+        
+        // Event listeners
+        generateButton.addEventListener('click', generateFullCode);
+        testButton.addEventListener('click', startLineByLineTesting);
+        resetButton.addEventListener('click', resetAll);
+        speedSlider.addEventListener('input', updateSpeed);
+        
+        // System prompt for generating complete code
+        const SYSTEM_PROMPT_GENERATE = `You are an expert JavaScript code generator. You will generate complete, working JavaScript code based on the user's request.
+
+Guidelines:
+1. Generate complete, functional code that solves the requested task
+2. Include appropriate error handling where relevant
+3. Use clear variable names and add comments to explain complex logic
+4. Format your code neatly with proper indentation
+5. Return ONLY the code, no explanations or markdown before or after the code
+6. Ensure the code is standalone and doesn't require external libraries unless specified`;
+
+        // System prompt for fixing errors
+        const SYSTEM_PROMPT_FIX = `You are an expert JavaScript debugging assistant. You will analyze code that has generated errors during execution and fix them.
+
+IMPORTANT: When analyzing errors, distinguish between:
+1. EXPECTED errors that naturally occur when executing code line-by-line (like "unexpected end of input" or undefined variables that will be defined in later lines)
+2. REAL errors that indicate bugs, syntax problems, or logic issues in the code
+
+Only fix REAL errors. For expected errors that occur due to incremental execution, return the original code unchanged.
+
+Guidelines for fixes:
+- Fix one error at a time
+- Preserve the original code structure and naming conventions
+- Explain your fix in a comment above the changed line
+- Return the COMPLETE fixed code, not just the fixed line`;
+
+        function updateSpeed() {
+            testInterval = parseInt(speedSlider.value);
+            speedValue.textContent = `${testInterval}ms`;
+            
+            // If we're currently testing, clear and restart the interval
+            if (isTesting && testIntervalId) {
+                clearInterval(testIntervalId);
+                testIntervalId = setInterval(executeNextLine, testInterval);
+            }
+        }
+        
+        function updateStatusInfo(message, isError = false) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = 'status';
+            statusEl.classList.add(isError ? 'error' : 'info');
+        }
+        
+        function showLoading(button, isLoading, text = '') {
+            if (isLoading) {
+                button.disabled = true;
+                button.innerHTML = `${text} <div class="loader"></div>`;
+            } else {
+                button.disabled = false;
+                button.textContent = text || button.getAttribute('data-original-text');
+            }
+        }
+        
+        async function generateFullCode() {
+            apiKey = document.getElementById('apiKey').value.trim();
+            const task = document.getElementById('taskInput').value.trim();
+            
+            if (!apiKey) {
+                updateStatusInfo('Please enter your OpenRouter API key', true);
+                return;
+            }
+            
+            if (!task) {
+                updateStatusInfo('Please enter a code generation task', true);
+                return;
+            }
+            
+            isGenerating = true;
+            generateButton.setAttribute('data-original-text', generateButton.textContent);
+            showLoading(generateButton, true, 'Generating');
+            testButton.disabled = true;
+            
+            generatedCodeElement.textContent = '';
+            executionOutputElement.textContent = '';
+            
+            try {
+                updateStatusInfo('Generating complete code solution...');
+                
+                const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${apiKey}`,
+                        "HTTP-Referer": window.location.href, 
+                        "X-Title": "Iterative Code Generator",
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        "model": "anthropic/claude-3.7-sonnet",
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": SYSTEM_PROMPT_GENERATE
+                            },
+                            {
+                                "role": "user",
+                                "content": `Generate complete JavaScript code for: ${task}`
+                            }
+                        ]
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`API request failed: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                let generatedCode = data.choices[0].message.content.trim();
+                
+                // Extract code from markdown if present
+                if (generatedCode.includes('```')) {
+                    const codeMatch = generatedCode.match(/```(?:javascript|js)?\n([\s\S]*?)```/);
+                    if (codeMatch && codeMatch[1]) {
+                        generatedCode = codeMatch[1].trim();
+                    }
+                }
+                
+                fullCode = generatedCode;
+                codeLines = fullCode.split('\n').filter(line => line !== '');
+                
+                // Display the generated code
+                generatedCodeElement.textContent = fullCode;
+                document.getElementById('lineCounter').textContent = `Lines: ${codeLines.length}`;
+                
+                updateStatusInfo('Code generation completed. Ready for line-by-line testing.');
+                testButton.disabled = false;
+                
+            } catch (error) {
+                console.error('Error in code generation:', error);
+                updateStatusInfo(`API Error: ${error.message}`, true);
+            } finally {
+                showLoading(generateButton, false, 'Generate Full Code');
+                isGenerating = false;
+            }
+        }
+        
+        function startLineByLineTesting() {
+            if (!fullCode || codeLines.length === 0) {
+                updateStatusInfo('Please generate code first', true);
+                return;
+            }
+            
+            isTesting = true;
+            testButton.setAttribute('data-original-text', testButton.textContent);
+            showLoading(testButton, true, 'Testing');
+            generateButton.disabled = true;
+            
+            currentLineIndex = 0;
+            executionOutputElement.textContent = '';
+            realErrors = [];
+            
+            updateStatusInfo('Beginning line-by-line code execution...');
+            
+            // Clear any previous highlights
+            const highlighted = generatedCodeElement.querySelectorAll('.current-line');
+            highlighted.forEach(el => el.classList.remove('current-line'));
+            
+            // Start the line-by-line execution
+            testIntervalId = setInterval(executeNextLine, testInterval);
+        }
+        
+        function executeNextLine() {
+            if (currentLineIndex >= codeLines.length) {
+                finishTesting();
+                return;
+            }
+            
+            // Create HTML representation of the code with current line highlighted
+            const codeHtml = codeLines.map((line, index) => {
+                const isCurrentLine = index === currentLineIndex;
+                return `<span class="${isCurrentLine ? 'current-line' : ''}">${escapeHtml(line)}</span>`;
+            }).join('\n');
+            
+            generatedCodeElement.innerHTML = codeHtml;
+            
+            // Execute code up to the current line
+            const codeUpToCurrentLine = codeLines.slice(0, currentLineIndex + 1).join('\n');
+            const result = executeCode(codeUpToCurrentLine);
+            
+            if (result.error) {
+                const errorMessage = result.error;
+                
+                // Check if this is a real error or just due to partial execution
+                if (!isExpectedExecutionError(errorMessage, currentLineIndex, codeLines)) {
+                    executionOutputElement.textContent += `Line ${currentLineIndex + 1} - ERROR: ${errorMessage}\n`;
+                    realErrors.push({
+                        line: currentLineIndex + 1,
+                        error: errorMessage,
+                        code: codeUpToCurrentLine
+                    });
+                } else {
+                    executionOutputElement.textContent += `Line ${currentLineIndex + 1} - Expected partial execution error - continuing\n`;
+                }
+            } else if (result.logs.length > 0) {
+                executionOutputElement.textContent += `Line ${currentLineIndex + 1} - Output:\n${result.logs.join('\n')}\n`;
+            } else {
+                executionOutputElement.textContent += `Line ${currentLineIndex + 1} - Executed successfully\n`;
+            }
+            
+            // Scroll the output to the bottom
+            executionOutputElement.scrollTop = executionOutputElement.scrollHeight;
+            
+            // Move to the next line
+            currentLineIndex++;
+        }
+        
+        function executeCode(code) {
+            // Save original console methods
+            const originalLog = console.log;
+            const originalError = console.error;
+            const originalWarn = console.warn;
+            const originalInfo = console.info;
+            
+            // Capture logs
+            let logs = [];
+            console.log = (...args) => {
+                const logText = args.map(arg => 
+                    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                ).join(' ');
+                logs.push(`[LOG] ${logText}`);
+                originalLog.apply(console, args);
+            };
+            
+            console.error = (...args) => {
+                const logText = args.map(arg => 
+                    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                ).join(' ');
+                logs.push(`[ERROR] ${logText}`);
+                originalError.apply(console, args);
+            };
+            
+            console.warn = (...args) => {
+                const logText = args.map(arg => 
+                    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                ).join(' ');
+                logs.push(`[WARN] ${logText}`);
+                originalWarn.apply(console, args);
+            };
+            
+            console.info = (...args) => {
+                const logText = args.map(arg => 
+                    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                ).join(' ');
+                logs.push(`[INFO] ${logText}`);
+                originalInfo.apply(console, args);
+            };
+            
+            let error = null;
+            
+            try {
+                // Try to execute the code
+                new Function(code)();
+            } catch (e) {
+                error = e.toString();
+            } finally {
+                // Restore original console methods
+                console.log = originalLog;
+                console.error = originalError;
+                console.warn = originalWarn;
+                console.info = originalInfo;
+            }
+            
+            return { logs, error };
+        }
+        
+        function isExpectedExecutionError(errorMessage, lineIndex, allLines) {
+            // Common patterns for errors that are expected during line-by-line execution
+            const expectedErrorPatterns = [
+                /Unexpected end of input/i,
+                /unexpected end/i,
+                /Unexpected token/i,
+                /Unexpected identifier/i,
+                /missing \) after argument list/i,
+                /is not defined/i,  // Variable not defined yet but likely will be in later lines
+                /cannot read property.*of undefined/i,
+                /is not a function/i,  // Function called before definition
+                /cannot access.*before initialization/i,
+                /missing \} after/i
+            ];
+            
+            // Check if the error matches one of our expected patterns
+            if (expectedErrorPatterns.some(pattern => pattern.test(errorMessage))) {
+                // Do some additional checks to make sure this really is due to partial execution
+                
+                // If we're at a bracket, check for unclosed pairs
+                if (/[{(\[]/.test(allLines[lineIndex])) {
+                    let openBraces = 0;
+                    let openParens = 0;
+                    let openBrackets = 0;
+                    
+                    for (let i = 0; i <= lineIndex; i++) {
+                        const line = allLines[i];
+                        for (let j = 0; j < line.length; j++) {
+                            const char = line[j];
+                            if (char === '{') openBraces++;
+                            else if (char === '}') openBraces--;
+                            else if (char === '(') openParens++;
+                            else if (char === ')') openParens--;
+                            else if (char === '[') openBrackets++;
+                            else if (char === ']') openBrackets--;
+                        }
+                    }
+                    
+                    // If we have unclosed braces/brackets/parens, the error is expected
+                    return openBraces > 0 || openParens > 0 || openBrackets > 0;
+                }
+                
+                // If the error is about an undefined variable/function, check if it's defined later
+                const undefinedMatch = errorMessage.match(/(?:is not defined|is not a function|cannot read property.*of undefined): ([\w$]+)/i);
+                if (undefinedMatch) {
+                    const undefinedName = undefinedMatch[1];
+                    // Check if this name appears in later lines (potential definitions)
+                    for (let i = lineIndex + 1; i < allLines.length; i++) {
+                        if (allLines[i].includes(undefinedName)) {
+                            return true;
+                        }
+                    }
+                }
+                
+                // Most likely an expected error due to partial execution
+                return true;
+            }
+            
+            // Not matching our expected patterns, probably a real error
+            return false;
+        }
+        
+        async function finishTesting() {
+            clearInterval(testIntervalId);
+            
+            if (realErrors.length > 0) {
+                // We have real errors to fix
+                updateStatusInfo(`Testing completed with ${realErrors.length} real error(s). Attempting to fix...`);
+                await fixErrors();
+            } else {
+                updateStatusInfo('Testing completed successfully! No errors detected.');
+                testButton.disabled = false;
+                generateButton.disabled = false;
+                showLoading(testButton, false, 'Test Line by Line');
+            }
+            
+            isTesting = false;
+        }
+        
+        async function fixErrors() {
+            // Take the first real error
+            const errorToFix = realErrors[0];
+            
+            try {
+                updateStatusInfo(`Fixing error on line ${errorToFix.line}: ${errorToFix.error}`);
+                
+                const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${apiKey}`,
+                        "HTTP-Referer": window.location.href,
+                        "X-Title": "Iterative Code Generator",
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        "model": "anthropic/claude-3.7-sonnet",
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": SYSTEM_PROMPT_FIX
+                            },
+                            {
+                                "role": "user",
+                                "content": `The following JavaScript code generated an error during line-by-line execution:
+                                
+${fullCode}
+Error on line ${errorToFix.line}: ${errorToFix.error}
+
+Please fix this error if it's a real issue, or explain if it's just due to line-by-line execution and can be ignored.`
+}
+]
+})
+});
+
+
+            if (!response.ok) {
+                throw new Error(`API request failed: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            let fixResponse = data.choices[0].message.content.trim();
+            
+            // Extract code from markdown if present
+            if (fixResponse.includes('```')) {
+                const codeMatch = fixResponse.match(/```(?:javascript|js)?\n([\s\S]*?)```/);
+                if (codeMatch && codeMatch[1]) {
+                    const fixedCode = codeMatch[1].trim();
+                    
+                    // Check if the code was actually changed or if the model determined it was just a partial execution error
+                    if (fixedCode !== fullCode) {
+                        fullCode = fixedCode;
+                        codeLines = fullCode.split('\n').filter(line => line !== '');
+                        
+                        generatedCodeElement.textContent = fullCode;
+                        document.getElementById('lineCounter').textContent = `Lines: ${codeLines.length}`;
+                        
+                        executionOutputElement.textContent += `\n--- FIXED CODE ---\n${fixResponse.replace(/```(?:javascript|js)?|```/g, '')}\n`;
+                        updateStatusInfo('Code fixed! You can run the test again to verify the fix.');
+                    } else {
+                        executionOutputElement.textContent += `\n--- ANALYSIS ---\nThe error was determined to be due to line-by-line execution and not a real issue in the code.\n`;
+                        updateStatusInfo('Analysis complete - the error was due to partial execution and not a real issue.');
+                    }
+                } else {
+                    executionOutputElement.textContent += `\n--- ANALYSIS ---\n${fixResponse}\n`;
+                }
+            } else {
+                executionOutputElement.textContent += `\n--- ANALYSIS ---\n${fixResponse}\n`;
+            }
+            
+        } catch (error) {
+            console.error('Error during fix:', error);
+            updateStatusInfo(`API Error during fix: ${error.message}`, true);
+        } finally {
+            // Re-enable buttons
+            testButton.disabled = false;
+            generateButton.disabled = false;
+            showLoading(testButton, false, 'Test Line by Line');
+            
+            // Scroll to see the output
+            executionOutputElement.scrollTop = executionOutputElement.scrollHeight;
+        }
+    }
+    
+    function resetAll() {
+        if (testIntervalId) {
+            clearInterval(testIntervalId);
+        }
+        
+        fullCode = '';
+        codeLines = [];
+        currentLineIndex = 0;
+        isGenerating = false;
+        isTesting = false;
+        realErrors = [];
+        
+        generatedCodeElement.textContent = '';
+        executionOutputElement.textContent = '';
+        document.getElementById('lineCounter').textContent = 'Lines: 0';
+        
+        showLoading(generateButton, false, 'Generate Full Code');
+        showLoading(testButton, false, 'Test Line by Line');
+        generateButton.disabled = false;
+        testButton.disabled = true;
+        
+        updateStatusInfo('Reset complete');
+    }
+    
+    function escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+</script>
+</body>
+</html>
